@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase, type Fridge, type Area, type Item, type CatalogItem } from '@/lib/supabase';
 import { mapFridgeDoors, identifyItem } from '@/app/actions';
-import { Camera, Plus, Loader2, RefreshCw, Trash2, Check, X } from 'lucide-react';
+import { Camera, Plus, Minus, Loader2, RefreshCw, Trash2, Check, X } from 'lucide-react';
 
 // Helper to compress camera photos on mobile devices to prevent payload-size limits
 async function compressImage(file: File, maxDimension = 1200, quality = 0.82): Promise<{ blob: Blob; base64: string; mimeType: string }> {
@@ -271,15 +271,50 @@ export default function FridgeApp() {
     setSelectedCatalogItem('');
   }
 
-  async function saveItemToArea(itemName: string) {
+  async function updateItemQuantity(id: string, newQuantity: number) {
     if (!selectedArea) return;
+    if (newQuantity <= 0) {
+      await handleDeleteItem(id);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('tfa_items')
+      .update({ quantity: newQuantity })
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Failed to update quantity:', error.message);
+    }
+
+    const updated = items.map((i) => (i.id === id ? { ...i, quantity: newQuantity } : i));
+    setItems(updated);
+    const newCache = { ...offlineItems, [selectedArea.id]: updated };
+    setOfflineItems(newCache);
+    localStorage.setItem('tfa_offline_items', JSON.stringify(newCache));
+  }
+
+  async function saveItemToArea(itemName: string, quantityToAdd = 1) {
+    if (!selectedArea) return;
+
+    const trimmedName = itemName.trim();
+    // If the item already exists in this section, increment its quantity
+    const existing = items.find(
+      (i) => i.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (existing) {
+      const newQty = (existing.quantity || 1) + quantityToAdd;
+      await updateItemQuantity(existing.id, newQty);
+      return;
+    }
 
     const { data: newItem, error: itemError } = await supabase
       .from('tfa_items')
       .insert({
         area_id: selectedArea.id,
-        name: itemName,
-        quantity: 1,
+        name: trimmedName,
+        quantity: quantityToAdd,
       })
       .select()
       .single();
@@ -301,10 +336,10 @@ export default function FridgeApp() {
       // Add to catalog table if not present
       supabase
         .from('tfa_item_catalog')
-        .upsert({ name: itemName, last_used_at: new Date().toISOString() }, { onConflict: 'name' })
+        .upsert({ name: trimmedName, last_used_at: new Date().toISOString() }, { onConflict: 'name' })
         .then(() => {
-          if (!catalog.some((c) => c.name.toLowerCase() === itemName.toLowerCase())) {
-            setCatalog((prev) => [...prev, { id: Date.now().toString(), name: itemName, last_used_at: new Date().toISOString() }]);
+          if (!catalog.some((c) => c.name.toLowerCase() === trimmedName.toLowerCase())) {
+            setCatalog((prev) => [...prev, { id: Date.now().toString(), name: trimmedName, last_used_at: new Date().toISOString() }]);
           }
         });
     }
@@ -448,7 +483,9 @@ export default function FridgeApp() {
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">{selectedArea.name}</h2>
-                <p className="text-xs text-gray-500">{items.length} item{items.length === 1 ? '' : 's'} in this section</p>
+                <p className="text-xs text-gray-500">
+                  {items.reduce((acc, i) => acc + (i.quantity || 1), 0)} total item{items.reduce((acc, i) => acc + (i.quantity || 1), 0) === 1 ? '' : 's'} ({items.length} unique)
+                </p>
               </div>
               <button
                 onClick={() => setSelectedArea(null)}
@@ -469,16 +506,46 @@ export default function FridgeApp() {
                 items.map((item) => (
                   <div
                     key={item.id}
-                    className="flex justify-between items-center px-4 py-3 bg-gray-50 hover:bg-gray-100/80 rounded-xl border border-gray-100 transition-colors"
+                    className="flex justify-between items-center px-3.5 py-2.5 bg-gray-50 hover:bg-gray-100/80 rounded-xl border border-gray-100 transition-colors"
                   >
-                    <span className="font-semibold text-gray-800 text-sm">{item.name}</span>
-                    <button
-                      onClick={() => handleDeleteItem(item.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
-                      title="Remove item"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <span className="font-semibold text-gray-800 text-sm truncate mr-2 flex-1">
+                      {item.name}
+                    </span>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Quantity Stepper */}
+                      <div className="flex items-center bg-white border border-gray-200 rounded-lg shadow-2xs overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => updateItemQuantity(item.id, (item.quantity || 1) - 1)}
+                          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-100 active:bg-gray-200 transition-colors cursor-pointer"
+                          title="Decrease quantity"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="px-2 text-xs font-bold text-gray-800 min-w-[22px] text-center select-none">
+                          {item.quantity || 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateItemQuantity(item.id, (item.quantity || 1) + 1)}
+                          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-100 active:bg-gray-200 transition-colors cursor-pointer"
+                          title="Increase quantity"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {/* Remove item */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        title="Remove item"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
