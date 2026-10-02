@@ -1,44 +1,55 @@
--- 1. Create Tables for The Fridge App (TFA prefix)
-CREATE TABLE IF NOT EXISTS TFA_fridges (
+-- 1. Create Tables for The Fridge App (lowercase for PostgreSQL compatibility)
+CREATE TABLE IF NOT EXISTS tfa_fridges (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   image_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS TFA_areas (
+CREATE TABLE IF NOT EXISTS tfa_areas (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  fridge_id UUID REFERENCES TFA_fridges(id) ON DELETE CASCADE,
+  fridge_id UUID REFERENCES tfa_fridges(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   coordinates JSONB NOT NULL, -- { ymin, xmin, ymax, xmax } scaled 0-1000
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS TFA_items (
+CREATE TABLE IF NOT EXISTS tfa_items (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  area_id UUID REFERENCES TFA_areas(id) ON DELETE CASCADE,
+  area_id UUID REFERENCES tfa_areas(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   quantity INTEGER DEFAULT 1,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS TFA_item_catalog (
+CREATE TABLE IF NOT EXISTS tfa_item_catalog (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT UNIQUE NOT NULL,
   last_used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. Disable Row Level Security (RLS) for Phase 1 (public/shared app without auth)
-ALTER TABLE TFA_fridges DISABLE ROW LEVEL SECURITY;
-ALTER TABLE TFA_areas DISABLE ROW LEVEL SECURITY;
-ALTER TABLE TFA_items DISABLE ROW LEVEL SECURITY;
-ALTER TABLE TFA_item_catalog DISABLE ROW LEVEL SECURITY;
+-- 2. Grant permissions to public roles (anon and authenticated)
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
 
--- 3. Create 'images' Storage Bucket if not exists
+GRANT ALL ON TABLE tfa_fridges TO anon, authenticated, service_role;
+GRANT ALL ON TABLE tfa_areas TO anon, authenticated, service_role;
+GRANT ALL ON TABLE tfa_items TO anon, authenticated, service_role;
+GRANT ALL ON TABLE tfa_item_catalog TO anon, authenticated, service_role;
+
+-- 3. Disable Row Level Security (RLS) for Phase 1 (no auth)
+ALTER TABLE tfa_fridges DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tfa_areas DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tfa_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tfa_item_catalog DISABLE ROW LEVEL SECURITY;
+
+-- 4. Create 'images' Storage Bucket if not exists
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('images', 'images', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
--- 4. Enable public upload & read access for 'images' storage bucket
+-- 5. Enable public upload & read access for 'images' storage bucket
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -51,3 +62,6 @@ BEGIN
     WITH CHECK (bucket_id = 'images');
   END IF;
 END $$;
+
+-- 6. Reload PostgREST schema cache immediately
+NOTIFY pgrst, 'reload schema';

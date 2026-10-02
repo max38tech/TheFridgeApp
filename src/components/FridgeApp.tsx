@@ -86,7 +86,7 @@ export default function FridgeApp() {
     try {
       // 1. Fetch fridge
       const { data: fridgeData, error: fridgeError } = await supabase
-        .from('TFA_fridges')
+        .from('tfa_fridges')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(1)
@@ -98,7 +98,7 @@ export default function FridgeApp() {
         setFridge(fridgeData);
         // 2. Fetch areas
         const { data: areasData } = await supabase
-          .from('TFA_areas')
+          .from('tfa_areas')
           .select('*')
           .eq('fridge_id', fridgeData.id);
         if (areasData) setAreas(areasData);
@@ -106,7 +106,7 @@ export default function FridgeApp() {
 
       // 3. Fetch catalog of previous items
       const { data: catalogData } = await supabase
-        .from('TFA_item_catalog')
+        .from('tfa_item_catalog')
         .select('*')
         .order('name', { ascending: true });
       if (catalogData) {
@@ -150,14 +150,14 @@ export default function FridgeApp() {
       // 3. Insert Fridge record
       setStatusMessage('Creating fridge record...');
       const { data: newFridge, error: fridgeInsertError } = await supabase
-        .from('TFA_fridges')
+        .from('tfa_fridges')
         .insert({ image_url: imageUrl })
         .select()
         .single();
 
       if (fridgeInsertError || !newFridge) {
         throw new Error(
-          fridgeInsertError?.message.includes('relation "public.TFA_fridges" does not exist') ||
+          fridgeInsertError?.message.includes('relation "public.tfa_fridges" does not exist') ||
           fridgeInsertError?.message.includes('Could not find the table')
             ? "Database tables have not been created yet. Please execute 'supabase-schema.sql' in your Supabase SQL editor!"
             : `Failed to create fridge in database: ${fridgeInsertError?.message || 'Unknown database error'}`
@@ -177,7 +177,7 @@ export default function FridgeApp() {
       }));
 
       const { data: newAreas, error: areasInsertError } = await supabase
-        .from('TFA_areas')
+        .from('tfa_areas')
         .insert(areasToInsert)
         .select();
 
@@ -209,7 +209,7 @@ export default function FridgeApp() {
 
     try {
       const { data, error } = await supabase
-        .from('TFA_items')
+        .from('tfa_items')
         .select('*')
         .eq('area_id', area.id)
         .order('created_at', { ascending: false });
@@ -266,7 +266,7 @@ export default function FridgeApp() {
     if (!selectedArea) return;
 
     const { data: newItem, error: itemError } = await supabase
-      .from('TFA_items')
+      .from('tfa_items')
       .insert({
         area_id: selectedArea.id,
         name: itemName,
@@ -291,7 +291,7 @@ export default function FridgeApp() {
 
       // Add to catalog table if not present
       supabase
-        .from('TFA_item_catalog')
+        .from('tfa_item_catalog')
         .upsert({ name: itemName, last_used_at: new Date().toISOString() }, { onConflict: 'name' })
         .then(() => {
           if (!catalog.some((c) => c.name.toLowerCase() === itemName.toLowerCase())) {
@@ -303,7 +303,7 @@ export default function FridgeApp() {
 
   async function handleDeleteItem(id: string) {
     if (!selectedArea) return;
-    const { error } = await supabase.from('TFA_items').delete().eq('id', id);
+    const { error } = await supabase.from('tfa_items').delete().eq('id', id);
     if (error) {
       console.warn('Failed to delete from Supabase:', error.message);
     }
@@ -319,7 +319,7 @@ export default function FridgeApp() {
       return;
     }
     if (fridge) {
-      await supabase.from('TFA_fridges').delete().eq('id', fridge.id);
+      await supabase.from('tfa_fridges').delete().eq('id', fridge.id);
     }
     setFridge(null);
     setAreas([]);
