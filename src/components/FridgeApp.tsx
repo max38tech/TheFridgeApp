@@ -63,6 +63,7 @@ export default function FridgeApp() {
   const [items, setItems] = useState<Item[]>([]);
   const [offlineItems, setOfflineItems] = useState<Record<string, Item[]>>({});
   const [selectedCatalogItem, setSelectedCatalogItem] = useState<string>('');
+  const [manualItemName, setManualItemName] = useState<string>('');
   
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,6 +201,7 @@ export default function FridgeApp() {
   async function loadItemsForArea(area: Area) {
     setSelectedArea(area);
     setSelectedCatalogItem('');
+    setManualItemName('');
 
     // If offline, use cache
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -254,6 +256,13 @@ export default function FridgeApp() {
       setStatusMessage('');
       if (itemFileInputRef.current) itemFileInputRef.current.value = '';
     }
+  }
+
+  async function handleManualAddItem() {
+    if (!manualItemName.trim() || !selectedArea) return;
+    const name = manualItemName.trim();
+    setManualItemName('');
+    await saveItemToArea(name);
   }
 
   async function handleAddCatalogItem() {
@@ -474,6 +483,30 @@ export default function FridgeApp() {
                 ))
               )}
             </div>
+
+            {/* Manual Type-in */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleManualAddItem();
+              }}
+              className="pt-3 pb-2 border-t border-gray-100 flex gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Type item name (e.g. Milk carton)..."
+                value={manualItemName}
+                onChange={(e) => setManualItemName(e.target.value)}
+                className="flex-1 text-sm bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              />
+              <button
+                type="submit"
+                disabled={!manualItemName.trim()}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-30 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1 active:scale-95 transition-all shadow-sm shadow-blue-500/20 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Add
+              </button>
+            </form>
 
             {/* Quick Pick From Catalog */}
             {catalog.length > 0 && (
